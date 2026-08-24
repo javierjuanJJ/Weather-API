@@ -1,0 +1,21 @@
+{
+  "name": "weather-api",
+  "version": "1.0.0",
+  "description": "Weather API with Visual Crossing integration, Redis caching, and rate limiting",
+  "type": "module",
+  "main": "app.js",
+  "scripts": {
+    "start": "node app.js",
+    "dev": "node --watch app.js",
+    "test": "node --test app.test.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^4.18.2",
+    "ioredis": "^5.3.2",
+    "zod": "^3.22.4"
+  },
+  "devDependencies": {},
+  "keywords": ["weather", "api", "express", "redis"],
+  "license": "MIT"
+}
