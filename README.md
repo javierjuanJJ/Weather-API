@@ -75,6 +75,79 @@ Respuesta (ejemplo):
 
 El campo `cached` indica si la respuesta se sirvió desde la caché de Redis.
 
+## Publicar y descargar la imagen en Docker Hub
+
+La imagen pública está en **`jjal20021998/weather-api:latest`**
+([ver en el navegador](https://hub.docker.com/r/jjal20021998/weather-api)).
+A continuación, el flujo completo: construir, subir, verificar y descargar.
+
+### 1. Construir la imagen
+
+Se construye desde el `Dockerfile` del repositorio. El tag se compone de
+`<usuario-dockerhub>/<nombre-imagen>:<tag>`.
+
+```bash
+docker build -t jjal20021998/weather-api:latest .
+```
+
+### 2. Subir la imagen a Docker Hub
+
+Primero hay que hacer login en Docker Hub y después hacer `push`:
+
+```bash
+docker login                # te pide usuario y contraseña / token de acceso
+docker push jjal20021998/weather-api:latest
+```
+
+### 3. Verificar que la imagen existe
+
+Desde la línea de comandos (consulta el registro remoto, no hace falta
+descargarla):
+
+```bash
+docker manifest inspect jjal20021998/weather-api:latest
+```
+
+Ver qué imagen tenemos localmente y su tamaño:
+
+```bash
+docker images
+# o filtrado por nombre:
+docker images jjal20021998/weather-api
+```
+
+Y en el navegador: <https://hub.docker.com/r/jjal20021998/weather-api>.
+
+### 4. Bajar la imagen desde el repositorio del código
+
+La imagen se obtiene a partir del código fuente: se clona el repo y se construye
+con Dockerfile + `docker-compose.yml`.
+
+```bash
+git clone https://github.com/javierjuanJJ/Weather-API.git
+cd Weather-API
+cp .env.example .env        # rellenar VISUAL_CROSSING_API_KEY
+docker compose up --build -d
+```
+
+### 5. Bajar la imagen directamente desde Docker Hub
+
+Sin tocar el código: la API se descarga tal cual de Docker Hub usando
+`docker-compose.dockerhub.yml` (que referencia `jjal20021998/weather-api:latest`
+en lugar de construirlo).
+
+```bash
+# Opción A: pull explícito + compose desde la imagen publicada
+docker pull jjal20021998/weather-api:latest
+docker compose -f docker-compose.dockerhub.yml up -d
+
+# Opción B: arrancar solo el contenedor de la API (necesita un Redis accesible
+# vía REDIS_HOST; levanta el puerto 3000)
+docker run --rm -d -p 3000:3000 --env-file .env jjal20021998/weather-api:latest
+```
+
+En ambos casos la API queda en `http://localhost:3000`.
+
 ## Ejecutar sin Docker (desarrollo local)
 
 Requisitos: Node.js 20+, Redis (`redis-server`) y una clave de Visual Crossing.
@@ -99,7 +172,8 @@ npm test
 ```
 .
 ├── Dockerfile              # Imagen de la API
-├── docker-compose.yml      # Orquestación (api + redis)
+├── docker-compose.yml      # Orquestación (api + redis) construyendo desde el código
+├── docker-compose.dockerhub.yml  # Idem usando la imagen publicada en Docker Hub
 ├── .env.example            # Plantilla de variables de entorno
 └── weather-api/
     ├── backend/            # Código de la API (Express)
