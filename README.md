@@ -75,6 +75,64 @@ Respuesta (ejemplo):
 
 El campo `cached` indica si la respuesta se sirvió desde la caché de Redis.
 
+## Informe de pruebas de la API
+
+Resultado de probar la API levantada en `http://localhost:3000` con `curl`.
+Informe completo en [`api-tests-report.md`](api-tests-report.md).
+
+### Resumen
+
+| Total tests | Éxitos (2xx) | Errores esperados | Errores inesperados |
+|---:|---:|---:|---:|
+| **25** | **8** ✅ | **14** ⚠️ | **3** ❌ |
+
+### Endpoint probado
+
+- `GET /weather?city=<ciudad>` — tiempo de una ciudad (Visual Crossing + caché Redis). No hay otros endpoints; cualquier otra ruta devuelve `404`.
+
+### Tabla de tests
+
+| # | Comando curl | Caso | Esperado | Resultado | Estado |
+|---|---|---|---|---|---|
+| 1 | `curl "http://localhost:3000/weather?city=London"` | Happy path (ciudad válida) | 200 | 200, `cached: false` | ✅ |
+| 2 | `curl "http://localhost:3000/weather?city=London"` | Cache hit (2ª llamada) | 200 | 200, `cached: true` | ✅ |
+| 3 | `curl "http://localhost:3000/weather"` | Sin parámetro `city` | 400 | 400 (`La ciudad es obligatoria`) | ✅ |
+| 4 | `curl "http://localhost:3000/weather?city="` | Ciudad vacía | 400 | 400 | ✅ |
+| 5 | `curl "http://localhost:3000/weather?city=A"` | Menos de 2 caracteres | 400 | 400 (Zod `too_small`) | ✅ |
+| 6 | `curl "http://localhost:3000/weather?city=<101 × a>"` | Más de 100 caracteres | 400 | 400 (Zod `too_big`) | ✅ |
+| 7 | `curl "http://localhost:3000/weather?city=<100 × a>"` | 100 caracteres pero ciudad inexistente | 4xx | **500** | ❌ **BUG** |
+| 8 | `curl "http://localhost:3000/weather?city=Zzzzzzzqqqq"` | Ciudad inexistente | 4xx | **500** | ❌ **BUG** |
+| 9 | `curl "http://localhost:3000/weather?city=Madrid&foo=bar&units=metric"` | Parámetros extra | 200 | 200 (Zod los ignora) | ✅ |
+| 10 | `curl "http://localhost:3000/weather?city=New%20York"` | Ciudad con espacios | 200 | 200 | ✅ |
+| 11 | `curl "http://localhost:3000/weather?city=12345"` | Valor numérico como string | 200/4xx | 200 (VC lo resuelve) | ✅ |
+| 12 | `curl "http://localhost:3000/weather?city=Roma"` | Miss de caché | 200 | 200, `cached: false` | ✅ |
+| 13 | `curl "http://localhost:3000/weather?city=Roma"` | Cache hit | 200 | 200, `cached: true` | ✅ |
+| 14 | `curl -I "http://localhost:3000/weather?city=London"` | `HEAD` | 200 | 200 | ✅ |
+| 15 | `curl -X OPTIONS -H "Origin: http://localhost:5173" -H "Access-Control-Request-Method: GET" "http://localhost:3000/weather?city=London"` | Preflight CORS (origen permitido) | 204 | 204 con cabeceras CORS | ✅ |
+| 16 | `curl -H "Origin: http://evil.example.com" "http://localhost:3000/weather?city=London"` | Origen CORS no permitido | 403 | **500** (HTML) | ❌ **BUG** |
+| 17 | `curl -X POST "http://localhost:3000/weather?city=London"` | Método no soportado | 404 | 404 | ✅ |
+| 18 | `curl -X PUT "http://localhost:3000/weather?city=London"` | Método no soportado | 404 | 404 | ✅ |
+| 19 | `curl -X PATCH "http://localhost:3000/weather?city=London"` | Método no soportado | 404 | 404 | ✅ |
+| 20 | `curl -X DELETE "http://localhost:3000/weather?city=London"` | Método no soportado | 404 | 404 | ✅ |
+| 21 | `curl -X POST -H "Content-Type: application/json" -d '{"city":"Madrid"}' "http://localhost:3000/weather"` | Body JSON en `POST` | 404 | 404 | ✅ |
+| 22 | `curl "http://localhost:3000/"` | Raíz | 404 | 404 | ✅ |
+| 23 | `curl "http://localhost:3000/weather/"` | Barra final | 400 | 400 (falta `city`) | ✅ |
+| 24 | `curl "http://localhost:3000/weather/London"` | `city` en el path | 404 | 404 | ✅ |
+| 25 | `curl "http://localhost:3000/api"` | Ruta inexistente | 404 | 404 | ✅ |
+
+### Bugs encontrados
+
+1. **Ciudad inexistente → `500` en vez de `4xx`.** Cuando Visual Crossing devuelve un estado no 2xx, el modelo lanza una excepción que acaba en un `500` genérico (`"Error al obtener la información meteorológica"`) en lugar de un `404`/`400`. Ficheros: `weather-api/backend/models/weather.js:38-40` y `weather-api/backend/controllers/weather.js:9-11`.
+2. **CORS con origen no permitido → `500`.** `middlewares/cors.js:16` hace `callback(new Error(...))` y Express lo trata como error 500 (página HTML), cuando lo correcto sería `403`.
+3. **Rate limiting documentado pero no implementado.** `RATE_LIMIT_WINDOW_MS` y `RATE_LIMIT_MAX` existen en `config.js` y en `docs/feature-004-rate-limiting.md`, pero `app.js` no registra el middleware `express-rate-limit`: tras 100+ peticiones rápidas la API sigue respondiendo.
+
+### Notas
+
+- Sin autenticación ni tokens: cualquier cliente puede consultar la API.
+- Sin endpoints WebSocket/SSE: todo es HTTP clásico y probable con `curl`.
+- La caché Redis funciona (TTL por defecto 12 h, ver `cached: true` en respuestas repetidas).
+- Validación Zod correcta: `city` obligatoria, mínimo 2 y máximo 100 caracteres.
+
 ## Publicar y descargar la imagen en Docker Hub
 
 La imagen pública está en **`jjal20021998/weather-api:latest`**
